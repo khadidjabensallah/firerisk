@@ -1,7 +1,7 @@
 import { defineNitroConfig } from "nitro/config";
 
 export default defineNitroConfig({
-    srcDir: "src",
-    entry: "server.ts",
+    serverDir: "src",
+    entry: "src/server.ts",
     preset: "vercel"
 });
