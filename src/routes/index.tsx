@@ -48,12 +48,11 @@ export const Route = createFileRoute("/")({
 });
 
 const featureImportance = [
-  { feature: "Temperature", importance: 0.34 },
-  { feature: "Relative Humidity", importance: 0.27 },
-  { feature: "Rain", importance: 0.21 },
-  { feature: "Wind Speed", importance: 0.18 },
+  { feature: "Temperature", importance: 0.1596 },
+  { feature: "Relative Humidity", importance: 0.4189 },
+  { feature: "Rain", importance: 0.3343 },
+  { feature: "Wind Speed", importance: 0.0872 },
 ];
-
 function classifyRisk(fwi: number) {
   if (fwi < 5)
     return {
@@ -96,6 +95,7 @@ function Dashboard() {
   const [rain, setRain] = useState(0.2);
   const [prediction, setPrediction] = useState<number | null>(null);
   const [isRunning, setIsRunning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const livePreview = useMemo(
     () => simulateFWI(temperature, humidity, wind, rain),
@@ -106,13 +106,46 @@ function Dashboard() {
   const risk = useMemo(() => classifyRisk(displayedFwi), [displayedFwi]);
   const gaugePercent = Math.min(100, (displayedFwi / 40) * 100);
 
-  const runPrediction = () => {
+const runPrediction = async () => {
+    // Reset states before calling
     setIsRunning(true);
     setPrediction(null);
-    setTimeout(() => {
-      setPrediction(simulateFWI(temperature, humidity, wind, rain));
+    setError(null);
+
+    try {
+      // Call our FastAPI backend
+      const response = await fetch("http://localhost:8000/api/predict", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          temperature: temperature,
+          rh: humidity,
+          ws: wind,
+          rain: rain,
+        }),
+      });
+
+      // If server returned an error status
+      if (!response.ok) {
+        throw new Error(`Server error: ${response.status}`);
+      }
+
+      // Parse the JSON response from FastAPI
+      const data = await response.json();
+
+      // data.fwi is the real ML prediction
+      setPrediction(data.fwi);
+
+    } catch (err) {
+      // Show error message if API is unreachable
+      setError("Cannot reach the backend. Is FastAPI running on port 8000?");
+      console.error(err);
+    } finally {
+      // Always stop the loading state
       setIsRunning(false);
-    }, 700);
+    }
   };
 
   return (
@@ -337,7 +370,11 @@ function Dashboard() {
                   step={0.1}
                   onChange={setRain}
                 />
-
+                {error && (
+                 <div className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-2 text-sm text-destructive">
+                    ⚠️ {error}
+                  </div>
+)}
                 <Button
                   onClick={runPrediction}
                   disabled={isRunning}
