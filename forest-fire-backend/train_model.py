@@ -1,6 +1,7 @@
 # ─────────────────────────────────────────────
 # train_model.py — Algerian Forest Fire Risk Engine
 # Mission: Clean data → Train model → Save it
+# Region: Bejaia only (Northeast Algeria)
 # ─────────────────────────────────────────────
 
 import pandas as pd
@@ -16,7 +17,7 @@ import os
 # ─────────────────────────────────────────────
 # We tell pandas to skip the very first line ("Bejaia Region Dataset")
 # because it's not a real data row — it's a region label
-# header=1 means "the real column names are on line index 1"
+# header=0 means "the first remaining row = column names"
 
 print("📂 Loading dataset...")
 
@@ -52,6 +53,14 @@ df.dropna(how="all", inplace=True)
 # 2f. Reset the index after all the deletions
 df.reset_index(drop=True, inplace=True)
 
+# ─────────────────────────────────────────────
+# *** BEJAIA ONLY — slice first 122 rows ***
+# The raw file has Bejaia first (rows 0-121)
+# followed by Sidi Bel-Abbès (rows 122-243)
+# We keep only Bejaia so the model is region-specific
+# ─────────────────────────────────────────────
+
+
 # 2g. Convert all columns to numeric where possible
 # Some numbers were read as strings because of the messy file
 # errors="coerce" turns anything unparseable into NaN
@@ -60,7 +69,7 @@ df = df.apply(pd.to_numeric, errors="coerce")
 # 2h. Drop rows where our target (FWI) or features are NaN
 df.dropna(subset=["Temperature", "RH", "Ws", "Rain", "FWI"], inplace=True)
 
-print(f"✅ Dataset cleaned — {len(df)} valid rows remaining")
+print(f"✅ Dataset cleaned — {len(df)} valid rows remaining (Bejaia only)")
 print(f"📊 FWI range: {df['FWI'].min()} to {df['FWI'].max()}")
 
 # ─────────────────────────────────────────────
@@ -69,7 +78,7 @@ print(f"📊 FWI range: {df['FWI'].min()} to {df['FWI'].max()}")
 # X = the 4 weather inputs our frontend will send
 # y = FWI, the number we want to predict
 
-X = df[["Temperature", "RH", "Ws", "Rain"]]
+X = df[["Temperature", "RH", "Ws", "Rain", "FFMC", "ISI"]]
 y = df["FWI"]
 
 print(f"\n🔢 Features shape: {X.shape}")
@@ -120,9 +129,11 @@ y_pred = model.predict(X_val)
 mae = mean_absolute_error(y_val, y_pred)
 
 print(f"\n📈 Validation MAE: {mae:.4f} FWI points")
-
+from sklearn.metrics import r2_score
+r2 = r2_score(y_val, y_pred)
+print(f"📊 Validation R²:  {r2:.4f} ({r2*100:.1f}%)")
 # Show feature importances — which input matters most?
-features = ["Temperature", "RH", "Ws", "Rain"]
+features = ["Temperature", "RH", "Ws", "Rain", "FFMC", "ISI"]
 importances = model.feature_importances_
 
 print("\n🔍 Feature Importances:")

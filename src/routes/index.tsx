@@ -48,35 +48,54 @@ export const Route = createFileRoute("/")({
 });
 
 const featureImportance = [
-  { feature: "Temperature", importance: 0.1596 },
-  { feature: "Relative Humidity", importance: 0.4189 },
-  { feature: "Rain", importance: 0.3343 },
-  { feature: "Wind Speed", importance: 0.0872 },
+  { feature: "ISI Index", importance: 0.7291 },
+  { feature: "FFMC Code", importance: 0.2050 },
+  { feature: "Humidity", importance: 0.0282 },
+  { feature: "Wind Speed", importance: 0.0180 },
+  { feature: "Temperature", importance: 0.0179 },
+  { feature: "Rainfall", importance: 0.0018 },
 ];
 function classifyRisk(fwi: number) {
   if (fwi < 5)
     return {
       label: "Low Risk",
-      className: "bg-primary text-primary-foreground",
+      className: "bg-emerald-500 text-emerald-950",
+      accentClassName: "bg-emerald-50/50 border-emerald-200/50",
       description: "Conditions are stable. Routine monitoring advised.",
     };
   if (fwi < 12)
     return {
       label: "Moderate Risk",
-      className: "bg-[oklch(0.78_0.16_95)] text-[oklch(0.25_0.05_60)]",
+      className: "bg-amber-400 text-amber-950",
+      accentClassName: "bg-amber-50/50 border-amber-200/50",
       description: "Elevated dryness. Maintain field readiness.",
     };
   if (fwi < 22)
     return {
       label: "High Risk",
-      className: "bg-[oklch(0.7_0.18_55)] text-[oklch(0.2_0.05_40)]",
+      className: "bg-orange-500 text-orange-950",
+      accentClassName: "bg-orange-50/50 border-orange-200/50",
       description: "Significant ignition potential across the region.",
     };
   return {
-    label: "Extreme Risk",
+    label: "Extreme Danger",
     className: "bg-destructive text-destructive-foreground",
+    accentClassName: "bg-destructive/5 border-destructive/20",
     description: "Critical fire weather. Immediate response posture required.",
   };
+}
+
+function computeSecondaryMetrics(temp: number, rh: number, wind: number, rain: number) {
+  const tempEffect = (temp - 25) * 0.4;
+  const rhEffect = (50 - rh) * 0.3;
+  const rainEffect = rain > 0 ? -Math.min(rain * 8, 40) : 0;
+  const ffmc = Math.max(20, Math.min(101, 82 + tempEffect + rhEffect + rainEffect));
+
+  const windEffect = wind * 0.4;
+  const ffmcFactor = (ffmc - 70) * 0.2;
+  const isi = Math.max(0, Math.min(50, 5 + windEffect + ffmcFactor));
+
+  return { ffmc, isi };
 }
 
 function simulateFWI(temp: number, rh: number, wind: number, rain: number) {
@@ -93,28 +112,32 @@ function Dashboard() {
   const [humidity, setHumidity] = useState(45);
   const [wind, setWind] = useState(18);
   const [rain, setRain] = useState(0.2);
+
+  const { ffmc, isi } = useMemo(
+    () => computeSecondaryMetrics(temperature, humidity, wind, rain),
+    [temperature, humidity, wind, rain]
+  );
+
   const [prediction, setPrediction] = useState<number | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const livePreview = useMemo(
-    () => simulateFWI(temperature, humidity, wind, rain),
-    [temperature, humidity, wind, rain],
-  );
+  const displayedFwi = prediction;
+  const risk = useMemo(() => (displayedFwi !== null ? classifyRisk(displayedFwi) : null), [displayedFwi]);
+  const gaugePercent = displayedFwi !== null ? Math.min(100, (displayedFwi / 40) * 100) : 0;
 
-  const displayedFwi = prediction ?? livePreview;
-  const risk = useMemo(() => classifyRisk(displayedFwi), [displayedFwi]);
-  const gaugePercent = Math.min(100, (displayedFwi / 40) * 100);
-
-const runPrediction = async () => {
+  const runPrediction = async () => {
     // Reset states before calling
     setIsRunning(true);
     setPrediction(null);
     setError(null);
 
     try {
+      // Use environment variable for backend URL, fallback to localhost for development
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
+
       // Call our FastAPI backend
-      const response = await fetch("http://localhost:8000/api/predict", {
+      const response = await fetch(`${backendUrl}/api/predict`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -124,6 +147,8 @@ const runPrediction = async () => {
           rh: humidity,
           ws: wind,
           rain: rain,
+          ffmc: ffmc,
+          isi: isi,
         }),
       });
 
@@ -165,22 +190,19 @@ const runPrediction = async () => {
 
           <nav className="mt-10 space-y-1 text-sm">
             {[
-              { icon: Activity, label: "Overview", active: true },
-              { icon: TrendingUp, label: "Feature Importance" },
-              { icon: Flame, label: "Simulation" },
-              { icon: ShieldCheck, label: "Model Health" },
-            ].map(({ icon: Icon, label, active }) => (
-              <div
+              { icon: Activity, label: "Overview", id: "overview" },
+              { icon: TrendingUp, label: "Feature Importance", id: "feature-importance" },
+              { icon: Flame, label: "Simulation", id: "simulation" },
+              { icon: ShieldCheck, label: "Model Health", id: "model-health" },
+            ].map(({ icon: Icon, label, id }) => (
+              <button
                 key={label}
-                className={`flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 transition-colors ${
-                  active
-                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
-                }`}
+                onClick={() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })}
+                className="flex w-full cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
               >
                 <Icon className="h-4 w-4" />
                 {label}
-              </div>
+              </button>
             ))}
           </nav>
         </div>
@@ -235,14 +257,14 @@ const runPrediction = async () => {
           </div>
         </header>
 
-        <div className="space-y-8 px-6 py-8 lg:px-10">
-          <section className="space-y-4">
+        <div id="overview" className="space-y-8 px-6 py-8 lg:px-10">
+          <section id="model-health" className="space-y-4">
             <div className="grid gap-4 md:grid-cols-3">
               <MetricCard
                 icon={ShieldCheck}
                 label="Model Stability"
-                value="94%"
-                hint="R² on held-out validation"
+                value="88.3%"
+                hint="R² on held-out validation (6 inputs)"
               />
               <MetricCard
                 icon={Cpu}
@@ -253,12 +275,12 @@ const runPrediction = async () => {
               <MetricCard
                 icon={MapPin}
                 label="Target Region"
-                value="Bejaia & Sidi Bel-Abbes"
-                hint="Northern Algeria · 2012 dataset"
+                value="Bejaia Region (Coastal Northeast)"
+                hint="Mediterranean climate · Forest fire dataset"
               />
             </div>
 
-            <Card className="border-border shadow-[var(--shadow-card)]">
+            <Card id="feature-importance" className="border-border shadow-[var(--shadow-card)]">
               <CardHeader className="flex flex-row items-center justify-between">
                 <div>
                   <CardTitle className="text-base font-semibold">
@@ -323,7 +345,7 @@ const runPrediction = async () => {
             </Card>
           </section>
 
-          <section className="grid gap-6 lg:grid-cols-5">
+          <section id="simulation" className="grid gap-6 lg:grid-cols-5">
             <Card className="border-border shadow-[var(--shadow-card)] lg:col-span-3">
               <CardHeader>
                 <CardTitle className="text-base font-semibold">
@@ -344,7 +366,7 @@ const runPrediction = async () => {
                   onChange={setTemperature}
                 />
                 <SliderField
-                  label="Relative Humidity"
+                  label="Humidity"
                   unit="%"
                   value={humidity}
                   min={10}
@@ -362,7 +384,7 @@ const runPrediction = async () => {
                   onChange={setWind}
                 />
                 <SliderField
-                  label="Rain"
+                  label="Rainfall"
                   unit="mm"
                   value={rain}
                   min={0}
@@ -370,15 +392,37 @@ const runPrediction = async () => {
                   step={0.1}
                   onChange={setRain}
                 />
+                <div className="grid grid-cols-2 gap-4">
+                  <SliderField
+                    label="FFMC Code"
+                    unit=""
+                    value={ffmc}
+                    min={20}
+                    max={101}
+                    step={0.1}
+                    onChange={() => { }}
+                    disabled
+                  />
+                  <SliderField
+                    label="ISI Index"
+                    unit=""
+                    value={isi}
+                    min={0}
+                    max={50}
+                    step={0.1}
+                    onChange={() => { }}
+                    disabled
+                  />
+                </div>
                 {error && (
-                 <div className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-2 text-sm text-destructive">
+                  <div className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-2 text-sm text-destructive">
                     ⚠️ {error}
                   </div>
-)}
+                )}
                 <Button
                   onClick={runPrediction}
                   disabled={isRunning}
-                  className="h-12 w-full bg-[image:var(--gradient-primary)] text-base font-semibold text-primary-foreground shadow-[var(--shadow-elegant)] transition-transform hover:scale-[1.01]"
+                  className="h-12 w-full bg-[oklch(0.35_0.1_150)] text-base font-semibold text-white shadow-[0_10px_20px_-10px_oklch(0.35_0.1_150)] transition-all hover:bg-[oklch(0.4_0.1_150)] hover:scale-[1.02] hover:brightness-110 active:scale-[0.98]"
                 >
                   <Play className="mr-2 h-4 w-4" />
                   {isRunning ? "Running inference…" : "Run ML Model Prediction"}
@@ -386,7 +430,7 @@ const runPrediction = async () => {
               </CardContent>
             </Card>
 
-            <Card className="border-border shadow-[var(--shadow-card)] lg:col-span-2">
+            <Card className={`border-border shadow-[var(--shadow-card)] transition-colors duration-500 lg:col-span-2 ${risk?.accentClassName || ""}`}>
               <CardHeader>
                 <CardTitle className="text-base font-semibold">
                   Predicted Fire Weather Index
@@ -399,22 +443,37 @@ const runPrediction = async () => {
               </CardHeader>
               <CardContent>
                 <div className="flex flex-col items-center">
-                  <Gauge percent={gaugePercent} value={displayedFwi} />
-                  <Badge
-                    className={`mt-6 rounded-full px-4 py-1.5 text-sm font-semibold ${risk.className}`}
-                  >
-                    <Flame className="mr-1.5 h-3.5 w-3.5" />
-                    {risk.label}
-                  </Badge>
-                  <p className="mt-3 max-w-xs text-center text-sm text-muted-foreground">
-                    {risk.description}
-                  </p>
+                  {displayedFwi !== null && risk ? (
+                    <>
+                      <Gauge percent={gaugePercent} value={displayedFwi} />
+                      <Badge
+                        className={`mt-6 rounded-full px-4 py-1.5 text-sm font-semibold ${risk.className}`}
+                      >
+                        <Flame className="mr-1.5 h-3.5 w-3.5" />
+                        {risk.label}
+                      </Badge>
+                      <p className="mt-3 max-w-xs text-center text-sm text-muted-foreground">
+                        {risk.description}
+                      </p>
+                    </>
+                  ) : (
+                    <div className="flex h-[200px] flex-col items-center justify-center text-center">
+                      <div className="rounded-full bg-secondary/30 p-4">
+                        <Activity className="h-8 w-8 text-muted-foreground/40" />
+                      </div>
+                      <p className="mt-4 text-sm text-muted-foreground">
+                        System standby. <br /> Adjust parameters and run prediction.
+                      </p>
+                    </div>
+                  )}
 
                   <div className="mt-6 grid w-full grid-cols-2 gap-3 text-xs">
-                    <ReadOut label="Temp" value={`${temperature}°C`} />
-                    <ReadOut label="Humidity" value={`${humidity}%`} />
-                    <ReadOut label="Wind" value={`${wind} km/h`} />
-                    <ReadOut label="Rain" value={`${rain.toFixed(1)} mm`} />
+                    <ReadOut label="TEMP" value={`${temperature}°C`} />
+                    <ReadOut label="HUMIDITY" value={`${humidity}%`} />
+                    <ReadOut label="WIND" value={`${wind} km/h`} />
+                    <ReadOut label="RAIN" value={`${rain.toFixed(1)} mm`} />
+                    <ReadOut label="FFMC" value={`${ffmc.toFixed(1)}`} />
+                    <ReadOut label="ISI" value={`${isi.toFixed(1)}`} />
                   </div>
                 </div>
               </CardContent>
@@ -471,6 +530,7 @@ function SliderField({
   max,
   step,
   onChange,
+  disabled = false,
 }: {
   label: string;
   unit: string;
@@ -479,6 +539,7 @@ function SliderField({
   max: number;
   step: number;
   onChange: (v: number) => void;
+  disabled?: boolean;
 }) {
   return (
     <div>
@@ -489,12 +550,12 @@ function SliderField({
         </span>
       </div>
       <Slider
-        className="mt-3"
+        className={`mt-3 ${disabled ? "opacity-50 pointer-events-none" : ""}`}
         value={[value]}
         min={min}
         max={max}
         step={step}
-        onValueChange={(v) => onChange(v[0])}
+        onValueChange={(v) => !disabled && onChange(v[0])}
       />
       <div className="mt-1 flex justify-between text-xs text-muted-foreground">
         <span>
@@ -534,18 +595,16 @@ function Gauge({ percent, value }: { percent: number; value: number }) {
           </linearGradient>
         </defs>
         <path
-          d={`M ${stroke / 2} ${radius} A ${normalized} ${normalized} 0 0 1 ${
-            radius * 2 - stroke / 2
-          } ${radius}`}
+          d={`M ${stroke / 2} ${radius} A ${normalized} ${normalized} 0 0 1 ${radius * 2 - stroke / 2
+            } ${radius}`}
           fill="none"
           stroke="oklch(0.94 0.01 220)"
           strokeWidth={stroke}
           strokeLinecap="round"
         />
         <path
-          d={`M ${stroke / 2} ${radius} A ${normalized} ${normalized} 0 0 1 ${
-            radius * 2 - stroke / 2
-          } ${radius}`}
+          d={`M ${stroke / 2} ${radius} A ${normalized} ${normalized} 0 0 1 ${radius * 2 - stroke / 2
+            } ${radius}`}
           fill="none"
           stroke="url(#gaugeGrad)"
           strokeWidth={stroke}

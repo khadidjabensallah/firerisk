@@ -86,6 +86,18 @@ class WeatherInput(BaseModel):
         le=20,
         description="Rainfall in mm"
     )
+    ffmc: float = Field(
+        ...,
+        ge=20,
+        le=101,
+        description="Fine Fuel Moisture Code"
+    )
+    isi: float = Field(
+        ...,
+        ge=0,
+        le=50,
+        description="Initial Spread Index"
+    )
 
 # ─────────────────────────────────────────────
 # STEP 5 — DEFINE THE OUTPUT SCHEMA
@@ -168,12 +180,14 @@ def health_check():
 def predict(data: WeatherInput):
     try:
         # Build feature array — ORDER MUST MATCH train_model.py
-        # In training we used: ["Temperature", "RH", "Ws", "Rain"]
+        # In training we used: ["Temperature", "RH", "Ws", "Rain", "FFMC", "ISI"]
         features = np.array([[
             data.temperature,
             data.rh,
             data.ws,
-            data.rain
+            data.rain,
+            data.ffmc,
+            data.isi
         ]])
 
         # Run the prediction
@@ -195,10 +209,18 @@ def predict(data: WeatherInput):
                 "temperature": data.temperature,
                 "rh": data.rh,
                 "ws": data.ws,
-                "rain": data.rain
+                "rain": data.rain,
+                "ffmc": data.ffmc,
+                "isi": data.isi
             }
         )
 
     except Exception as e:
         # If anything goes wrong, return a proper HTTP error
         raise HTTPException(status_code=500, detail=str(e))
+
+if __name__ == "__main__":
+    import uvicorn
+    # Use PORT environment variable for Render
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("app:app", host="0.0.0.0", port=port, reload=False)
