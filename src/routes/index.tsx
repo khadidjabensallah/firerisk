@@ -133,11 +133,8 @@ function Dashboard() {
     setError(null);
 
     try {
-      // Use environment variable for backend URL, fallback to localhost for development
-      const backendUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
-
       // Call our FastAPI backend
-      const response = await fetch(`${backendUrl}/api/predict`, {
+      const response = await fetch("https://firerisk.onrender.com/api/predict", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -165,8 +162,13 @@ function Dashboard() {
 
     } catch (err) {
       // Show error message if API is unreachable
-      setError("Cannot reach the backend. Is FastAPI running on port 8000?");
-      console.error(err);
+      const isDev = import.meta.env.DEV;
+      if (isDev) {
+        setError("Cannot reach the backend. Is FastAPI running on port 8000?");
+      } else {
+        setError("Production backend connection failed. Ensure VITE_BACKEND_URL is configured in your deployment settings.");
+      }
+      console.error("Backend Error:", err);
     } finally {
       // Always stop the loading state
       setIsRunning(false);
