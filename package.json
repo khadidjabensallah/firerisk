@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
-    "build": "vite build && nitro build && mkdir -p .vercel/output/static && cp -rf dist/client/* .vercel/output/static/",
+    "build": "vite build && NITRO_PUBLIC_DIR=dist/client nitro build",
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
     "lint": "eslint .",
